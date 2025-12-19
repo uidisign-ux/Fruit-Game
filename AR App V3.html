@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>🍒 AR Fruit Sort — Dual‑Hand (Final)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0b0f1a;
+      --bg2: #0e1330;
+      --glass: rgba(255, 255, 255, 0.08);
+      --glass2: rgba(255, 255, 255, 0.16);
+      --pri: #7c86ff;
+      --pri2: #5f6aff;
+      --acc: #33e6ff;
+      --ok: #36e39a;
+      --warn: #ff7a7a;
+      --text: #eef2ff;
+      --muted: #a8b2ff;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      font-family: -apple-system, "SF Pro Display", "SF Pro Text", "SF Pro", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background:
+        radial-gradient(1200px 700px at 85% 10%, #1a2258 0%, transparent 60%),
+        radial-gradient(900px 600px at 10% 100%, #0b2666 0%, transparent 55%),
+        var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow: hidden;
+    }
+
+    .stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: linear-gradient(180deg, var(--bg2), var(--bg));
+    }
+
+    video,
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    #webcam {
+      z-index: 0;
+      filter: blur(2px) brightness(0.85) saturate(1.05);
+      opacity: 0.4;
+    }
+
+    #overlay {
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    /* Targets: solid outlines, bigger labels */
+    #targets {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 20px;
+      display: flex;
+      gap: 18px;
+      justify-content: center;
+      z-index: 4;
+    }
+
+    .box {
+      position: relative;
+      width: 160px;
+      height: 130px;
+      border-radius: 18px;
+      border: 2px solid rgba(124, 134, 255, 0.95);
+      /* solid line (no dashes) */
+      background: linear-gradient(180deg, rgba(124, 134, 255, 0.10), rgba(124, 134, 255, 0.06));
+      box-shadow: inset 0 0 26px rgba(124, 134, 255, 0.18);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 14px;
+      backdrop-filter: blur(10px);
+      transition: box-shadow .18s ease, transform .14s ease, border-color .18s ease;
+    }
+
+    .box .label {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 15px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--glass);
+      border: 1px solid var(--glass2);
+      color: var(--text);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+    }
+
+    .box.highlight {
+      border-color: var(--acc);
+      box-shadow: 0 0 34px rgba(51, 230, 255, 0.35), inset 0 0 24px rgba(51, 230, 255, 0.18);
+      transform: translateY(-2px);
+    }
+
+    .box.okay {
+      border-color: var(--ok);
+      box-shadow: 0 0 38px rgba(54, 227, 154, 0.45), inset 0 0 22px rgba(54, 227, 154, 0.22);
+    }
+
+    .box.wrong {
+      border-color: var(--warn);
+      box-shadow: 0 0 32px rgba(255, 122, 122, 0.35), inset 0 0 22px rgba(255, 122, 122, 0.2);
+    }
+
+    /* Fruit icons: big, drop-shadow only (NO background on fruits) */
+    #icons {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+    }
+
+    .icon {
+      position: absolute;
+      width: 128px;
+      height: 128px;
+      display: grid;
+      place-items: center;
+      transform: translate(-9999px, -9999px) scale(1);
+      filter: drop-shadow(0 16px 32px rgba(0, 0, 0, 0.55));
+      transition: filter .1s ease;
+    }
+
+    .icon.hold {
+      filter: drop-shadow(0 24px 44px rgba(0, 0, 0, 0.65));
+    }
+
+    .token {
+      font-size: 96px;
+      /* bigger emoji */
+      background: none !important;
+      /* remove any light background */
+      padding: 0 !important;
+      line-height: 1;
+    }
+
+    .chip {
+      background: var(--glass);
+      border: 1px solid var(--glass2);
+      border-radius: 14px;
+      backdrop-filter: blur(8px);
+      box-shadow: var(--shadow);
+    }
+
+    .status {
+      position: absolute;
+      left: 20px;
+      top: 20px;
+      z-index: 7;
+      padding: 10px 14px;
+      font-size: 16px;
+    }
+
+    .hud {
+      position: absolute;
+      left: 20px;
+      bottom: 20px;
+      z-index: 7;
+      padding: 10px 14px;
+      font-size: 14px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .topbar {
+      position: absolute;
+      right: 20px;
+      top: 20px;
+      z-index: 8;
+      display: flex;
+      gap: 12px;
+    }
+
+    .iconbtn {
+      width: 56px;
+      height: 56px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      background: var(--glass);
+      border: 1px solid var(--glass2);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      color: #ffffff;
+      /* make icons white */
+    }
+
+    .iconbtn svg {
+      width: 26px;
+      height: 26px;
+      stroke: currentColor;
+      fill: none;
+      opacity: 1;
+    }
+
+    .panel {
+      position: absolute;
+      right: 20px;
+      top: 84px;
+      z-index: 8;
+      width: 340px;
+      display: none;
+      padding: 16px;
+      border-radius: 16px;
+      border: 1px solid var(--glass2);
+      background: var(--glass);
+      box-shadow: var(--shadow);
+      font-size: 14px;
+    }
+
+    .panel h3 {
+      margin: 4px 0 10px;
+      font-size: 14px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 10px 0;
+    }
+
+    .row input[type="number"] {
+      width: 110px;
+    }
+
+    .btnline {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 12px;
+    }
+
+    .pill {
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--glass2);
+      background: var(--glass);
+      cursor: pointer;
+    }
+
+    .pill--warn {
+      border-color: rgba(255, 122, 122, 0.6);
+      color: #ffdede;
+    }
+
+    .start {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(180deg, rgba(14, 19, 48, 0.92), rgba(10, 15, 28, 0.92));
+    }
+
+    .card {
+      max-width: 780px;
+      padding: 24px;
+      text-align: center;
+      border-radius: 18px;
+      border: 1px solid var(--glass2);
+      background: var(--glass);
+      box-shadow: var(--shadow);
+    }
+
+    .title {
+      margin: 0 0 8px;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: .2px;
+    }
+
+    .sub {
+      margin: 0 0 10px;
+      opacity: .95;
+      font-size: 16px;
+    }
+
+    .btn {
+      background: linear-gradient(180deg, var(--pri), var(--pri2));
+      color: #0b0e1c;
+      border: none;
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      font-size: 16px;
+      box-shadow: 0 24px 44px rgba(124, 134, 255, 0.35);
+    }
+
+    .note {
+      display: block;
+      margin-top: 10px;
+      font-size: 12px;
+      opacity: .85;
+    }
+
+    /* Coach pulse (first-time hint) */
+    .coach {
+      position: absolute;
+      left: 50%;
+      top: 65%;
+      transform: translate(-50%, -50%);
+      z-index: 9;
+      pointer-events: none;
+    }
+
+    .pulse {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 3px solid #33e6ff;
+      animation: pulse 1.6s ease-out infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        opacity: 0.9;
+        transform: scale(0.6);
+      }
+
+      100% {
+        opacity: 0;
+        transform: scale(2);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="stage" class="stage">
+    <!-- Start -->
+    <div id="start" class="start">
+      <div class="card">
+        <h1 class="title">🍒 AR Fruit Sort</h1>
+        <p class="sub">Wave your hand. Pinch to grab a fruit. Place each fruit in its matching box.</p>
+        <button id="startBtn" class="btn">Start</button>
+        <small class="note">Two hands supported. Solid outlines. Bigger white buttons. Sounds + confetti.</small>
+      </div>
+    </div>
+
+    <!-- Media -->
+    <video id="webcam" playsinline muted></video>
+    <canvas id="overlay"></canvas>
+
+    <!-- Game layers -->
+    <div id="targets"></div>
+    <div id="icons"></div>
+
+    <!-- UI -->
+    <div id="status" class="status chip">Arrange: <span id="targetText">—</span></div>
+    <div id="hud" class="hud chip">
+      <div>Right hand: <span id="hudR" class="muted">waiting</span></div>
+      <div>Left hand: <span id="hudL" class="muted">waiting</span></div>
+    </div>
+
+    <div class="topbar">
+      <button id="fsBtn" class="iconbtn" title="Fullscreen" aria-label="Fullscreen">
+        <svg viewBox="0 0 24 24" stroke-width="2">
+          <path d="M3 9V5h4M21 9V5h-4M3 15v4h4M21 15v4h-4" stroke="currentColor" stroke-linecap="round" fill="none" />
+        </svg>
+      </button>
+      <button id="settingsBtn" class="iconbtn" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" stroke-width="2">
+          <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" fill="none" />
+          <path
+            d="M19.4 15a1.7 1.7 0 0 0 .34 1.86l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1.5.9l-.03.06a2 2 0 1 1-3.93 0l-.03-.06A1.7 1.7 0 0 0 8 19.4a1.7 1.7 0 0 0-1.86-.34l-.06.03a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.9-1.5l-.06-.03a2 2 0 1 1 0-3.93l.06-.03A1.7 1.7 0 0 0 4.6 8a1.7 1.7 0 0 0-.34-1.86l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 8 4.6c.55 0 1.07-.21 1.5-.6l.03-.06a2 2 0 1 1 3.93 0l.03.06c.43.39.95.6 1.5.6a1.7 1.7 0 0 0 1.86-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06c-.39.43-.6.95-.6 1.5 0 .55.21 1.07.6 1.5l.06.03c.39.43.6.95.6 1.5Z"
+            stroke="currentColor" fill="none" />
+        </svg>
+      </button>
+      <button id="resetBtn" class="iconbtn" title="Reset" aria-label="Reset">
+        <svg viewBox="0 0 24 24" stroke-width="2">
+          <path d="M3 12a9 9 0 1 0 3-6.7M3 3v6h6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
+            fill="none" />
+        </svg>
+      </button>
+    </div>
+
+    <div id="panel" class="panel">
+      <h3>Settings</h3>
+      <div class="row"><label>Mirror (selfie view)</label><input id="optMirror" type="checkbox" checked></div>
+      <div class="row"><label>Max hands</label><select id="optHands">
+          <option value="1">1</option>
+          <option value="2" selected>2</option>
+        </select></div>
+      <div class="row"><label>Pick radius (px)</label><input id="optPick" type="number" min="40" max="200" step="2"
+          value="100"></div>
+      <div class="row"><label>Snap tolerance (px)</label><input id="optSnap" type="number" min="30" max="200" step="2"
+          value="80"></div>
+      <div class="row"><label>Show HUD</label><input id="optHud" type="checkbox" checked></div>
+      <div class="btnline">
+        <button id="applyBtn" class="pill">Apply</button>
+        <button id="closeBtn" class="pill pill--warn">Close</button>
+      </div>
+    </div>
+
+    <div id="coach" class="coach">
+      <div class="pulse"></div>
+    </div>
+  </div>
+
+  <!-- MediaPipe -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <!-- Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <script>
+    // ========== Config ==========
+    const CONFIG = {
+      TARGET_LABELS: ['Apple', 'Banana', 'Grapes', 'Orange'],
+      FRUITS: { Apple: '🍎', Banana: '🍌', Grapes: '🍇', Orange: '🍊', Strawberry: '🍓', Pineapple: '🍍', Kiwi: '🥝', Watermelon: '🍉' },
+      DISTRACTORS: ['Strawberry', 'Pineapple', 'Kiwi', 'Watermelon'],
+      CAMERA_SIZE: { width: 1280, height: 720 },
+      PICK_RADIUS: 100, SNAP_TOLERANCE: 80,
+      HYSTERESIS: { on: 0.35, off: 0.5 },
+      MIRROR_DEFAULT: true // selfie view so right-hand appears on the right
+    };
+
+    // ========== DOM ==========
+    const stage = document.getElementById('stage');
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+    const targetsLayer = document.getElementById('targets');
+    const iconsLayer = document.getElementById('icons');
+
+    const startScreen = document.getElementById('start');
+    const startBtn = document.getElementById('startBtn');
+    const fsBtn = document.getElementById('fsBtn');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    const panel = document.getElementById('panel');
+    const closeBtn = document.getElementById('closeBtn');
+    const applyBtn = document.getElementById('applyBtn');
+    const optMirror = document.getElementById('optMirror');
+    const optHands = document.getElementById('optHands');
+    const optPick = document.getElementById('optPick');
+    const optSnap = document.getElementById('optSnap');
+    const optHud = document.getElementById('optHud');
+
+    const targetText = document.getElementById('targetText');
+    const hud = document.getElementById('hud');
+    const hudR = document.getElementById('hudR');
+    const hudL = document.getElementById('hudL');
+    const coach = document.getElementById('coach');
+
+    // ========== State ==========
+    const app = {
+      icons: [], // {id, emoji, label, x,y, home:{x,y}, dom, scale, lockedBy:null|'left'|'right'|'done'}
+      boxes: [], // {id, label, expectedEmoji, dom, occupiedBy:null}
+      hasWon: false,
+      stageW: 0, stageH: 0,
+      mirrored: CONFIG.MIRROR_DEFAULT,
+      thresholds: { ...CONFIG.HYSTERESIS },
+      maxHands: 2,
+      hands: [], // [{which:'left'|'right', visible, lm, pinch, wasPinch, point, lastPoint, activeId}]
+      handsInstance: null, cameraInstance: null,
+      audio: null, waved: false
+    };
+
+    // ========== Utils ==========
+    function stageRect() { const r = stage.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }
+    function initCanvas(resizeIcons = false) {
+      const r = stageRect(); const prevW = app.stageW || r.w, prevH = app.stageH || r.h;
+      app.stageW = r.w; app.stageH = r.h; canvas.width = r.w; canvas.height = r.h;
+      if (resizeIcons) {
+        const sx = r.w / prevW, sy = r.h / prevH;
+        for (const it of app.icons) { it.x *= sx; it.y *= sy; it.home.x *= sx; it.home.y *= sy; setIconTransform(it); }
+      }
+    }
+    window.addEventListener('resize', () => initCanvas(true));
+    function toPx(lm) { return { x: lm.x * canvas.width, y: lm.y * canvas.height }; }
+    function dist(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return Math.hypot(dx, dy); }
+    function ema(prev, next, a) { if (!prev) return next; return { x: prev.x * (1 - a) + next.x * a, y: prev.y * (1 - a) + next.y * a }; }
+    function reflectX(x) { return app.mirrored ? (app.stageW - x) : x; }
+    function drawBg() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+
+    // ========== Audio (simple SFX) ==========
+    function sfxInit() {
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      const master = ac.createGain(); master.gain.value = 0.28; master.connect(ac.destination);
+      app.audio = { ac, master };
+    }
+    function beep(freqs = [440], dur = 0.12, type = 'triangle', gain = 0.45) {
+      const { ac, master } = app.audio; const t0 = ac.currentTime;
+      freqs.forEach((f, i) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.type = type; o.frequency.value = f;
+        g.gain.setValueAtTime(0.001, t0 + i * 0.005);
+        g.gain.linearRampToValueAtTime(gain * (1 - i * 0.2), t0 + 0.02 + i * 0.005);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.05);
+        o.connect(g).connect(master); o.start(t0 + i * 0.005); o.stop(t0 + dur + 0.08);
+      });
+    }
+    const SFX = {
+      pick: () => beep([880, 1200], 0.1, 'triangle', 0.45),
+      good: () => beep([660, 880, 1320], 0.16, 'triangle', 0.5),
+      bad: () => beep([200, 150], 0.18, 'sawtooth', 0.5),
+      win: () => beep([523, 659, 784, 1047], 0.22, 'triangle', 0.55)
+    };
+
+    // ========== Fruits / Boxes ==========
+    function setIconTransform(it) { it.dom.style.transform = `translate(${(it.x - 64)}px, ${(it.y - 64)}px) scale(${it.scale || 1})`; }
+    function createTargets() {
+      targetsLayer.innerHTML = ''; app.boxes = [];
+      targetText.textContent = CONFIG.TARGET_LABELS.join(' • ');
+      CONFIG.TARGET_LABELS.forEach((label, i) => {
+        const div = document.createElement('div'); div.className = 'box';
+        const tag = document.createElement('div'); tag.className = 'label'; tag.textContent = label;
+        div.appendChild(tag); targetsLayer.appendChild(div);
+        app.boxes.push({ id: 'box' + i, label, expectedEmoji: CONFIG.FRUITS[label], dom: div, occupiedBy: null });
+      });
+    }
+    function layoutIcons() {
+      iconsLayer.innerHTML = ''; app.icons = [];
+      const r = stageRect(); const all = [...CONFIG.TARGET_LABELS, ...CONFIG.DISTRACTORS];
+      const pad = 80;
+      all.forEach((label, idx) => {
+        const emoji = CONFIG.FRUITS[label];
+        const x = Math.random() * (r.w - pad * 2) + pad;
+        const y = r.h - 240 + Math.random() * 150;
+        const div = document.createElement('div'); div.className = 'icon'; div.dataset.id = 'icon' + idx;
+        div.innerHTML = `<span class="token">${emoji}</span>`; /* NO background */
+        iconsLayer.appendChild(div);
+        const it = { id: 'icon' + idx, emoji, label, x, y, home: { x, y }, dom: div, scale: 1, lockedBy: null };
+        app.icons.push(it); setIconTransform(it);
+      });
+    }
+    function getBoxRects() { return app.boxes.map(b => { const r = b.dom.getBoundingClientRect(); return { id: b.id, dom: b.dom, x: r.left, y: r.top, w: r.width, h: r.height }; }); }
+    function nearestBox(x, y) {
+      const boxes = getBoxRects(); let best = null, bestD = Infinity;
+      for (const b of boxes) { const cx = b.x + b.w / 2, cy = b.y + b.h / 2; const d = Math.hypot(x - cx, y - cy); if (d < bestD) { bestD = d; best = b; } }
+      return { box: best, d: bestD };
+    }
+    function pickIconAt(p) {
+      let best = null, bestD = Infinity;
+      for (const it of app.icons) {
+        if (it.lockedBy === 'done') continue; // correctly placed items are locked
+        const d = Math.hypot(it.x - p.x, it.y - p.y);
+        if (d < CONFIG.PICK_RADIUS && d < bestD) { best = it; bestD = d; }
+      }
+      return best;
+    }
+    function moveIcon(id, p) {
+      const it = app.icons.find(i => i.id === id); if (!it) return;
+      it.x = Math.max(64, Math.min(app.stageW - 64, p.x));
+      it.y = Math.max(64, Math.min(app.stageH - 64, p.y));
+      setIconTransform(it);
+    }
+    function clearBoxByIcon(iconId) { for (const b of app.boxes) if (b.occupiedBy === iconId) b.occupiedBy = null; }
+    function dropOrSnap(iconId) {
+      const it = app.icons.find(i => i.id === iconId); if (!it) return;
+      const rect = it.dom.getBoundingClientRect(); const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+      const { box, d } = nearestBox(cx, cy);
+      for (const b of app.boxes) b.dom.classList.remove('highlight');
+
+      if (box && d < CONFIG.SNAP_TOLERANCE) {
+        const model = app.boxes.find(bb => bb.dom === box.dom);
+        if (model.expectedEmoji === it.emoji) {
+          const sr = stageRect(); const bx = box.x + box.w / 2 - sr.x, by = box.y + box.h / 2 - sr.y;
+          it.x = bx; it.y = by; setIconTransform(it);
+          clearBoxByIcon(it.id); model.occupiedBy = it.id;
+          it.lockedBy = 'done'; // lock after correct snap
+          model.dom.classList.remove('wrong'); model.dom.classList.add('okay');
+          if (app.audio) SFX.good();
+        } else {
+          model.dom.classList.remove('okay'); model.dom.classList.add('wrong');
+          if (app.audio) SFX.bad();
+          // Wrong: leave fruit where dropped (can be moved aside later)
+        }
+      } else {
+        // Not near any box: leave fruit where dropped
+      }
+      checkWin();
+    }
+    function checkWin() {
+      const all = app.boxes.every(b => b.occupiedBy && app.icons.find(i => i.id === b.occupiedBy)?.emoji === b.expectedEmoji);
+      if (all && !app.hasWon) {
+        app.hasWon = true;
+        const fire = (x) => confetti({ particleCount: 130, spread: 70, origin: { x, y: 0.25 } });
+        fire(.2); fire(.5); fire(.8);
+        if (app.audio) SFX.win();
+      }
+    }
+
+    // ========== AR Hands ==========
+    function ensureHands() {
+      if (!app.hands.length) {
+        app.hands = [
+          { which: 'right', visible: false, lm: null, pinch: false, wasPinch: false, point: null, lastPoint: null, activeId: null },
+          { which: 'left', visible: false, lm: null, pinch: false, wasPinch: false, point: null, lastPoint: null, activeId: null }
+        ];
+      }
+    }
+    function pinchInfo(lm) {
+      const thumb = toPx(lm[4]), index = toPx(lm[8]), palmA = toPx(lm[5]), palmB = toPx(lm[17]);
+      const palmSpan = dist(palmA, palmB) || 1;
+      let point = { x: (thumb.x + index.x) / 2, y: (thumb.y + index.y) / 2 };
+      point = { x: reflectX(point.x), y: point.y }; // reflect only when mirrored
+      const ratio = dist(thumb, index) / palmSpan;
+      return { ratio, point };
+    }
+    function drawHand(lm, color, pinchPoint, isPinching) {
+      // Stylized neon glove: thick lines along finger chains + pinch ring
+      const rawX = x => lmXToCanvasX(x);
+      function lmXToCanvasX(v) { const x = v * canvas.width; return app.mirrored ? (app.stageW - x) : x; } // reflect in math, canvas stays unflipped
+      const P = i => ({ x: rawX(lm[i].x), y: lm[i].y * canvas.height });
+      const chains = [[0, 1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [17, 18, 19, 20]];
+
+      // palm glow
+      const wrist = P(0); const g = ctx.createRadialGradient(wrist.x, wrist.y, 10, wrist.x, wrist.y, 160);
+      g.addColorStop(0, 'rgba(255,255,255,0.08)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(wrist.x, wrist.y, 140, 0, Math.PI * 2); ctx.fill();
+
+      for (const c of chains) {
+        const pts = c.map(P);
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.strokeStyle = color; ctx.lineWidth = 14; ctx.shadowBlur = 18; ctx.shadowColor = color;
+        ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
+        ctx.shadowBlur = 0; ctx.strokeStyle = '#e7ecff'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
+      }
+      if (pinchPoint) {
+        const r = isPinching ? 20 : 14;
+        const glow = ctx.createRadialGradient(pinchPoint.x, pinchPoint.y, 0, pinchPoint.x, pinchPoint.y, r * 2.2);
+        glow.addColorStop(0, 'rgba(51,230,255,0.35)'); glow.addColorStop(1, 'rgba(51,230,255,0)');
+        ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(pinchPoint.x, pinchPoint.y, r * 2.2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(pinchPoint.x, pinchPoint.y, r, 0, Math.PI * 2);
+        ctx.strokeStyle = isPinching ? '#33e6ff' : '#7c86ff'; ctx.lineWidth = isPinching ? 3 : 2; ctx.shadowBlur = 12; ctx.shadowColor = ctx.strokeStyle; ctx.stroke(); ctx.shadowBlur = 0;
+      }
+    }
+
+    async function cleanupHands() {
+      try { if (app.cameraInstance && app.cameraInstance.stop) await app.cameraInstance.stop(); } catch { }
+      try { if (app.handsInstance && app.handsInstance.close) app.handsInstance.close(); } catch { }
+      app.cameraInstance = null; app.handsInstance = null;
+    }
+    async function setupHands() {
+      await cleanupHands();
+      // Mirror the VIDEO only (selfie). Canvas stays unflipped. We reflect math instead.
+      video.style.transform = app.mirrored ? 'scaleX(-1)' : 'none';
+
+      const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+      hands.setOptions({ maxNumHands: app.maxHands, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.6 });
+      hands.onResults(onResults);
+      app.handsInstance = hands;
+
+      const cam = new Camera(video, { onFrame: async () => { await hands.send({ image: video }); }, width: CONFIG.CAMERA_SIZE.width, height: CONFIG.CAMERA_SIZE.height });
+      app.cameraInstance = cam;
+      try { await cam.start(); } catch (e) { alert('Camera failed. Use HTTPS or localhost, then allow permission.'); console.error(e); }
+    }
+
+    function onResults(res) {
+      ensureHands();
+      drawBg();
+
+      const lms = res.multiHandLandmarks || [];
+      const hd = res.multiHandedness || [];
+
+      // reset visibility
+      app.hands.forEach(h => { h.visible = false; });
+
+      for (let i = 0; i < lms.length; i++) {
+        const lm = lms[i];
+        const which = (hd?.[i]?.label || 'Right').toLowerCase().includes('left') ? 'left' : 'right';
+        const hand = app.hands.find(h => h.which === which);
+        hand.visible = true; hand.lm = lm;
+
+        const { ratio, point } = pinchInfo(lm);
+        const smoothed = ema(hand.lastPoint, point, 0.35); hand.lastPoint = smoothed; hand.point = smoothed;
+
+        // Hide coach once tracking starts
+        if (!app.waved && lms.length > 0) { app.waved = true; coach.style.display = 'none'; }
+
+        // Hysteresis
+        if (!hand.pinch && ratio < app.thresholds.on) {
+          hand.pinch = true;
+          if (!hand.activeId) {
+            const picked = pickIconAt(smoothed);
+            if (picked && !picked.lockedBy) {
+              hand.activeId = picked.id; picked.lockedBy = hand.which; picked.scale = 1.08; picked.dom.classList.add('hold'); setIconTransform(picked);
+              if (app.audio) SFX.pick();
+            }
+          }
+        } else if (hand.pinch && ratio > app.thresholds.off) {
+          hand.pinch = false;
+          if (hand.activeId) {
+            const it = app.icons.find(i => i.id === hand.activeId);
+            if (it) { it.scale = 1; it.dom.classList.remove('hold'); setIconTransform(it); }
+            dropOrSnap(hand.activeId);
+            const it2 = app.icons.find(i => i.id === hand.activeId);
+            if (it2 && it2.lockedBy !== 'done') it2.lockedBy = null; // free if not snapped correctly
+            hand.activeId = null;
+          }
+        }
+
+        if (hand.pinch && hand.activeId && !app.hasWon) moveIcon(hand.activeId, smoothed);
+
+        // Hover highlight
+        const sr = stageRect(); const near = nearestBox(sr.x + smoothed.x, sr.y + smoothed.y);
+        for (const b of app.boxes) b.dom.classList.remove('highlight');
+        if (near.box && near.d < CONFIG.SNAP_TOLERANCE + 24) { const model = app.boxes.find(bb => bb.dom === near.box.dom); model.dom.classList.add('highlight'); }
+
+        // Draw stylized hand (neon glove)
+        drawHand(lm, which === 'left' ? '#7c86ff' : '#33e6ff', smoothed, hand.pinch);
+      }
+
+      // If a hand vanishes mid-drag, release its icon
+      for (const h of app.hands) {
+        if (!h.visible && h.activeId) {
+          const it = app.icons.find(i => i.id === h.activeId);
+          if (it) { it.scale = 1; it.dom.classList.remove('hold'); setIconTransform(it); it.lockedBy = null; }
+          h.activeId = null; h.pinch = false;
+        }
+      }
+
+      // HUD
+      hud.style.display = optHud.checked ? 'block' : 'none';
+      hudR.textContent = app.hands.find(h => h.which === 'right')?.pinch ? 'pinching' : (lms.length ? 'tracking' : 'waiting');
+      hudL.textContent = app.hands.find(h => h.which === 'left')?.pinch ? 'pinching' : (lms.length ? 'tracking' : 'waiting');
+    }
+
+    // ========== UI ==========
+    settingsBtn.addEventListener('click', () => { panel.style.display = (panel.style.display === 'block') ? 'none' : 'block'; });
+    closeBtn.addEventListener('click', () => panel.style.display = 'none');
+    fsBtn.addEventListener('click', async () => { try { if (!document.fullscreenElement) await stage.requestFullscreen(); else await document.exitFullscreen(); } catch { } });
+    applyBtn.addEventListener('click', async () => {
+      app.mirrored = !!optMirror.checked;
+      app.maxHands = parseInt(optHands.value || '2', 10);
+      CONFIG.PICK_RADIUS = parseFloat(optPick.value || '100');
+      CONFIG.SNAP_TOLERANCE = parseFloat(optSnap.value || '80');
+      await setupHands();
+      panel.style.display = 'none';
+    });
+    resetBtn.addEventListener('click', () => resetGame());
+
+    function resetGame() {
+      app.hasWon = false; app.waved = false; coach.style.display = 'block';
+      createTargets(); layoutIcons(); initCanvas(); drawBg();
+      for (const b of app.boxes) b.dom.classList.remove('okay', 'wrong', 'highlight');
+    }
+
+    // ========== Lifecycle ==========
+    startBtn.addEventListener('click', async () => {
+      startScreen.style.display = 'none';
+      initCanvas(); resetGame();
+      if (!app.audio) sfxInit(); await app.audio.ac.resume().catch(() => { });
+      // Defaults in panel
+      optMirror.checked = app.mirrored; optHands.value = '2';
+      optPick.value = String(CONFIG.PICK_RADIUS); optSnap.value = String(CONFIG.SNAP_TOLERANCE);
+      await setupHands();
+    });
+
+    initCanvas();
+  </script>
+</body>
+
+</html>
